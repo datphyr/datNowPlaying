@@ -38,13 +38,18 @@
 
         const name = document.createElement('span');
         name.className = 'name';
-        name.innerHTML = c.label + (c.tier === 1 ? '<span class="tier">tier 1</span>' : '');
+        const hint = c.kind === 'image'
+          ? '<span class="tier">name, or name.jpg/.png/.webp to force a format</span>'
+          : (c.tier === 1 ? '<span class="tier">tier 1</span>' : '');
+        name.innerHTML = c.label + hint;
 
         const input = document.createElement('input');
         input.type = 'text';
         input.value = st.file;
         input.dataset.role = 'file';
-        input.title = c.kind === 'image' ? 'Base name (extension added automatically)' : 'File name';
+        input.title = c.kind === 'image'
+          ? 'Base name; add .jpg/.png/.webp to force that format (converted if needed)'
+          : 'File name';
 
         row.appendChild(cb); row.appendChild(name); row.appendChild(input);
         cb.addEventListener('change', () => { st.enabled = cb.checked; row.classList.toggle('off', !cb.checked); });

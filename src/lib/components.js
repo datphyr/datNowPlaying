@@ -18,7 +18,7 @@
     {
       id: 'details',
       title: 'Track details',
-      blurb: 'No extra request, no cover art download. All on by default.',
+      blurb: 'No SoundCloud API request needed. All on by default.',
       components: [
         { id: 'title', label: 'Track title', file: 'track.txt', tier: 0, default: true },
         { id: 'artist', label: 'Artist', file: 'artist.txt', tier: 0, default: true },

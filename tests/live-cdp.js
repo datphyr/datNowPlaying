@@ -139,7 +139,8 @@ async function evalInContext(cdp, contextId, expression) {
       check('offscreen writer document created', off === true, 'hasDocument=' + off);
       const st = await swEval(`(async()=>{ try { return await askSelfTest(); } catch(e){ return {ok:false,error:String(e)}; } })()`);
       check('writer writes files + json + cover and reads back (OPFS)', st && st.ok === true, JSON.stringify(st));
-      if (st && st.ok) log('  self-test readBack=' + JSON.stringify(st.readBack) + ' imageBytes=' + st.imageBytes);
+      if (st) log('  self-test: imageBytes=' + st.imageBytes + ' converted=' + JSON.stringify(st.converted) + ' steps=' + JSON.stringify(st.steps));
+      check('cover format conversion (png -> jpg) produced art.jpg', !!(st && st.converted && st.converted.name === 'art.jpg' && st.converted.bytes > 0), JSON.stringify(st && st.converted));
 
       // Tier 1: hit the real SoundCloud API from the extension's own worker
       const apiRes = await swEval(`(async()=>{ try { const r = await DNPapi.fetchTrack('https://soundcloud.com/forss/flickermood'); return r.ok ? r.fields : { error: r.error }; } catch(e){ return { error: String(e) }; } })()`);

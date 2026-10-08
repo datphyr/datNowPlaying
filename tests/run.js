@@ -265,7 +265,9 @@ function makeEnv() {
   globalThis.fetch = async (url) => {
     fetched.push(url);
     if (/fail/.test(url)) return { ok: false, status: 404, headers: { get: () => null } };
-    const type = /webp/.test(url) ? 'image/webp' : 'image/jpeg';
+    const type = /\.webp\b/.test(url) ? 'image/webp'
+      : /\.png\b/.test(url) ? 'image/png'
+      : 'image/jpeg';
     return {
       ok: true, status: 200,
       headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : null) },
@@ -282,6 +284,45 @@ function makeEnv() {
   const C = require(path.join(__dirname, '..', 'src', 'lib', 'components.js'));
   const A = require(path.join(__dirname, '..', 'src', 'lib', 'api.js'));
   const V = require(path.join(__dirname, '..', 'src', 'lib', 'values.js'));
+  const CV = require(path.join(__dirname, '..', 'src', 'lib', 'cover.js'));
+  globalThis.DNPcover = CV;   // offscreen.js reads it when resolving the cover name
+
+  /* --------------------------- cover naming --------------------------- */
+  test('cover: bare name keeps the served extension', () => {
+    const t = CV.resolveCoverTarget('cover', 'image/png');
+    eq(t.ext, 'png'); eq(t.base, 'cover'); eq(t.convert, false);
+  });
+  test('cover: no extension and jpeg source -> jpg', () => {
+    const t = CV.resolveCoverTarget('cover', 'image/jpeg');
+    eq(t.ext, 'jpg'); eq(t.convert, false);
+  });
+  test('cover: name.jpg with a png source converts', () => {
+    const t = CV.resolveCoverTarget('cover.jpg', 'image/png');
+    eq(t.base, 'cover'); eq(t.ext, 'jpg'); eq(t.mime, 'image/jpeg'); eq(t.convert, true);
+  });
+  test('cover: name.jpg with a jpg source does not convert', () => {
+    eq(CV.resolveCoverTarget('cover.jpg', 'image/jpeg').convert, false);
+  });
+  test('cover: name.png with a jpg source converts', () => {
+    const t = CV.resolveCoverTarget('art.png', 'image/jpeg');
+    eq(t.base, 'art'); eq(t.ext, 'png'); eq(t.convert, true);
+  });
+  test('cover: webp target is recognised', () => {
+    const t = CV.resolveCoverTarget('album.webp', 'image/jpeg');
+    eq(t.ext, 'webp'); eq(t.convert, true);
+  });
+  test('cover: unknown extension is part of the base name (no conversion)', () => {
+    const t = CV.resolveCoverTarget('my.cover', 'image/png');
+    eq(t.base, 'my.cover'); eq(t.ext, 'png'); eq(t.convert, false);
+  });
+  test('cover: missing/empty name falls back to cover', () => {
+    eq(CV.resolveCoverTarget('', 'image/jpeg').base, 'cover');
+    eq(CV.resolveCoverTarget(null, 'image/jpeg').base, 'cover');
+  });
+  test('cover: unknown source type defaults to jpg', () => {
+    const t = CV.resolveCoverTarget('cover', 'image/avif');
+    eq(t.ext, 'jpg'); eq(t.convert, false);
+  });
 
   /* ------------------------ component registry ------------------------ */
   test('registry: track details default on', () => {
@@ -474,6 +515,25 @@ function makeEnv() {
     test('removes the previous cover when the extension changes', () => {
       eq(res.imageName, 'cover.webp');
       ok(env.removed.includes('cover.jpg'), 'cover.jpg not removed: ' + JSON.stringify(env.removed));
+    });
+  }
+  {
+    const env = makeEnv();
+    // No canvas in node, so a forced-format request must fall back to the
+    // served bytes rather than failing the write.
+    const res = await env.write({ image: { name: 'art.jpg', url: 'https://i1.sndcdn.com/x.png' } });
+    test('forced format falls back to the source format when conversion is unavailable', () => {
+      ok(res.ok, 'not ok: ' + JSON.stringify(res));
+      eq(res.imageName, 'art.png');
+      ok(/convert/.test(res.warning || ''), 'expected a conversion warning, got ' + JSON.stringify(res.warning));
+    });
+  }
+  {
+    const env = makeEnv();
+    const res = await env.write({ image: { name: 'cover.png', url: 'https://i1.sndcdn.com/x.webp' } });
+    test('bare-name cover keeps the served extension', () => {
+      ok(res.ok, 'not ok');
+      eq(res.imageName, 'cover.webp');
     });
   }
   {

@@ -119,7 +119,21 @@ metadata. One track is chosen at a time — no interleaving.
 
 SoundCloud serves artwork at size variants (`…-large.jpg`, `…-t500x500.jpg`). The writer tries
 `-original` first, then `-t500x500`, then the URL as given, and takes the first that
-downloads. The file extension follows the real `Content-Type`.
+downloads.
+
+The **Cover art** setting names the output file and controls its format:
+
+| Setting | Result |
+|---------|--------|
+| `cover` | whatever format SoundCloud served (`cover.jpg`, `cover.png`, …) |
+| `cover.jpg` | always `.jpg` — converted from the source if it was not JPEG |
+| `cover.png` | always `.png` — converted if needed |
+| `cover.webp` | always `.webp` — converted if needed |
+
+Conversion runs in the offscreen document via `OffscreenCanvas`; JPEG output is flattened onto
+white first (JPEG has no alpha). If a source cannot be decoded (e.g. SVG), the write falls back
+to the served format and reports a warning rather than failing. Any other extension is treated
+as part of the base name, so nothing is renamed silently.
 
 ## Settings
 
@@ -158,10 +172,10 @@ node scripts/make-icons.js    # regenerate icons (only if you change the artwork
 ```
 
 `tests/live-cdp.js` + `scripts/live-test.bat` drive a real headless Chrome over the DevTools
-Protocol (verifying the manifest loads, the service worker runs, the writer's file path works,
-a real track resolves through the SoundCloud API, and the content script injects into a live
-SoundCloud page). It must run with **Windows `node.exe`** and a Windows Chrome, because a
-Windows Chrome's loopback DevTools port isn't reachable from WSL.
+Protocol (verifying the manifest loads, the service worker runs, the writer's file path and cover
+conversion work, a real track resolves through the SoundCloud API, and the content script injects
+into a live SoundCloud page). It must run with **Windows `node.exe`** and a Windows Chrome,
+because a Windows Chrome's loopback DevTools port isn't reachable from WSL.
 
 The extension files carry no minification and no bundler on purpose: what you read is what
 Chrome runs.

@@ -24,7 +24,7 @@ console.log(paths.size+" files referenced, all present");
 '
 
 echo "== javascript syntax =="
-for f in src/background.js src/content.js src/offscreen.js src/options.js src/popup.js src/lib/metadata.js src/lib/idb.js src/lib/components.js src/lib/values.js src/lib/api.js scripts/make-icons.js tests/run.js; do
+for f in src/background.js src/content.js src/offscreen.js src/options.js src/popup.js src/lib/metadata.js src/lib/idb.js src/lib/components.js src/lib/values.js src/lib/cover.js src/lib/api.js scripts/make-icons.js tests/run.js; do
   node --check "$f" && echo "  ok   $f"
 done
 

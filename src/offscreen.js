@@ -11,17 +11,17 @@
  *     image: {name, url, lastImageName} | null,
  *     clear: bool }
  *
+ * The cover is downloaded and, when its name carries a target extension
+ * (cover.jpg / cover.png / cover.webp), converted to that format with canvas.
+ *
  * A diagnostics self-test ("dnp:selftest") writes the same shape into the
  * browser's private OPFS sandbox and reads the bytes back, exercising this code
- * path without needing a user gesture.
+ * path (including conversion) without needing a user gesture.
  */
 (function () {
   'use strict';
 
-  const MIME_EXT = {
-    'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
-    'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg'
-  };
+  const MIME_EXT = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
 
   async function getWritableDir() {
     const handle = await DNPIdb.getHandle();
@@ -58,6 +58,25 @@
     return { name, changed: true };
   }
 
+  // Re-encode downloaded image bytes into the requested mime type using canvas.
+  async function convertImage(buffer, sourceType, targetMime) {
+    const srcBlob = new Blob([buffer], { type: sourceType || 'image/jpeg' });
+    const bitmap = await createImageBitmap(srcBlob);
+    try {
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d');
+      if (targetMime === 'image/jpeg') {         // JPEG has no alpha: flatten first
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.drawImage(bitmap, 0, 0);
+      const out = await canvas.convertToBlob({ type: targetMime, quality: 0.92 });
+      return await out.arrayBuffer();
+    } finally {
+      if (bitmap.close) bitmap.close();
+    }
+  }
+
   async function fetchArtwork(url, base) {
     let candidates;
     try {
@@ -72,7 +91,7 @@
         const buf = await res.arrayBuffer();
         if (!buf || !buf.byteLength) { lastErr = 'empty image'; continue; }
         const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-        return { buffer: buf, ext: MIME_EXT[type] || 'jpg', url: abs };
+        return { buffer: buf, type: type, url: abs };
       } catch (e) { lastErr = String((e && e.message) || e); }
     }
     return { error: lastErr };
@@ -99,15 +118,32 @@
 
     if (p.image && p.image.url) {
       const art = await fetchArtwork(p.image.url, p.base);
-      if (art && art.buffer) {
-        imageName = (p.image.name || 'cover') + '.' + art.ext;
-        written.push(await writeBytes(dir, imageName, art.buffer));
-        if (p.image.lastImageName && p.image.lastImageName !== imageName) {
-          try { await dir.removeEntry(p.image.lastImageName); } catch (e) { /* ignore */ }
-        }
-      } else {
+      if (!art || !art.buffer) {
         return { ok: true, written, imageName: null, warning: 'artwork fetch failed: ' + (art && art.error) };
       }
+      const t = DNPcover.resolveCoverTarget(p.image.name, art.type);
+      const srcExt = MIME_EXT[art.type] || 'jpg';
+      let bytes = art.buffer;
+      let warning;
+      if (t.convert) {
+        try {
+          bytes = await convertImage(art.buffer, art.type, t.mime);
+        } catch (e) {
+          // Conversion unsupported (e.g. SVG source): fall back to the original bytes.
+          warning = 'could not convert to ' + t.ext + ', wrote ' + srcExt + ' instead';
+        }
+      }
+      if (!bytes || bytes === art.buffer) {
+        if (t.convert && warning) imageName = t.base + '.' + srcExt;
+        else imageName = t.base + '.' + t.ext;
+      } else {
+        imageName = t.base + '.' + t.ext;
+      }
+      written.push(await writeBytes(dir, imageName, bytes));
+      if (p.image.lastImageName && p.image.lastImageName !== imageName) {
+        try { await dir.removeEntry(p.image.lastImageName); } catch (e) { /* ignore */ }
+      }
+      return { ok: true, written, imageName, warning };
     }
 
     return { ok: true, written, imageName };
@@ -127,28 +163,61 @@
     catch (e) { return { ok: false, error: String((e && e.name ? e.name + ': ' : '') + ((e && e.message) || e)) }; }
   }
 
+  // Build a valid PNG in-browser and expose it via a blob: URL, so the image
+  // path (and conversion) is exercised without host permissions or hand-written
+  // bytes (a hand-assembled base64 PNG is easy to get subtly wrong).
+  async function makeSamplePngUrl() {
+    const c = new OffscreenCanvas(8, 8);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ff5500';
+    ctx.fillRect(0, 0, 8, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(2, 2, 4, 4);
+    const blob = await c.convertToBlob({ type: 'image/png' });
+    return URL.createObjectURL(blob);
+  }
+
+  async function readBytesSize(dir, name) {
+    try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch (e) { return 0; }
+  }
+
   async function selftest() {
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle('dnp-selftest', { create: true });
-    // Real PNG bytes via a blob: URL, so the image path is exercised without
-    // depending on host permissions.
-    const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
-    const sample = {
-      files: [
-        { name: 'track.txt', text: 'Self-test Track' },
-        { name: 'artist.txt', text: 'Self-test Artist' },
-        { name: 'genre.txt', text: 'Self-test Genre' }
-      ],
-      json: { name: 'nowplaying.json', text: JSON.stringify({ title: 'Self-test Track', genre: 'Self-test Genre' }, null, 2) },
-      image: { name: 'cover', url: objectUrl }
-    };
-    let w;
-    try { w = await writeTo(dir, sample); }
-    finally { URL.revokeObjectURL(objectUrl); }
+
+    const url1 = await makeSamplePngUrl();
+    const url2 = await makeSamplePngUrl();
+    const steps = {};
+    let w, wConv;
+    try {
+      w = await writeTo(dir, {
+        files: [
+          { name: 'track.txt', text: 'Self-test Track' },
+          { name: 'artist.txt', text: 'Self-test Artist' },
+          { name: 'genre.txt', text: 'Self-test Genre' }
+        ],
+        json: { name: 'nowplaying.json', text: JSON.stringify({ title: 'Self-test Track', genre: 'Self-test Genre' }, null, 2) },
+        image: { name: 'cover', url: url1 }          // keep original extension
+      });
+      wConv = await writeTo(dir, {
+        image: { name: 'art.jpg', url: url2 }        // force .jpg (convert from png)
+      });
+    } catch (e) {
+      steps.writeError = String((e && e.message) || e);
+    } finally {
+      URL.revokeObjectURL(url1);
+      URL.revokeObjectURL(url2);
+    }
+
+    // Probe the converter directly so a failure names the step that broke.
+    try {
+      const sampleCanvas = new OffscreenCanvas(4, 4);
+      sampleCanvas.getContext('2d').fillRect(0, 0, 4, 4);
+      const pngBuf = await (await sampleCanvas.convertToBlob({ type: 'image/png' })).arrayBuffer();
+      steps.convert = await convertImage(pngBuf, 'image/png', 'image/jpeg').then((b) => 'ok:' + b.byteLength).catch((e) => 'err:' + String((e && e.message) || e));
+    } catch (e) { steps.convert = 'err:' + String((e && e.message) || e); }
+    steps.hasCreateImageBitmap = typeof createImageBitmap === 'function';
+    steps.hasOffscreenCanvas = typeof OffscreenCanvas === 'function';
 
     const back = {
       track: await readExisting(dir, 'track.txt'),
@@ -156,18 +225,20 @@
       genre: await readExisting(dir, 'genre.txt'),
       json: await readExisting(dir, 'nowplaying.json')
     };
-    let imageBytes = 0;
-    try { imageBytes = (await (await dir.getFileHandle('cover.png')).getFile()).size; } catch (e) { /* none */ }
-
+    const origPngBytes = await readBytesSize(dir, 'cover.png');
+    const forcedJpgBytes = await readBytesSize(dir, 'art.jpg');
     let jsonOk = false;
     try { jsonOk = JSON.parse(back.json).genre === 'Self-test Genre'; } catch (e) { /* noop */ }
 
+    const textOk = back.track === 'Self-test Track' && back.artist === 'Self-test Artist' && jsonOk;
+    const conversionOk = forcedJpgBytes > 0 && (wConv && wConv.imageName === 'art.jpg');
     return {
-      ok: w.ok && back.track === 'Self-test Track' && back.artist === 'Self-test Artist' && jsonOk && imageBytes > 0,
-      wrote: w.written,
+      ok: !!(w && w.ok && textOk && origPngBytes > 0 && conversionOk),
+      wrote: w && w.written,
       readBack: back,
-      imageBytes,
-      warning: w.warning,
+      imageBytes: origPngBytes,
+      converted: { name: wConv && wConv.imageName, bytes: forcedJpgBytes, warning: wConv && wConv.warning },
+      steps: steps,
       dir: 'opfs:/dnp-selftest'
     };
   }
