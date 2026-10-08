@@ -8,7 +8,7 @@
 
   async function refresh() {
     let res;
-    try { res = await chrome.runtime.sendMessage({ type: 'scnp:get-status' }); } catch (e) { res = null; }
+    try { res = await chrome.runtime.sendMessage({ type: 'dnp:get-status' }); } catch (e) { res = null; }
     if (!res) { setState('extension reloaded — reopen this popup'); return; }
 
     const { status, active, playing, settings, error } = res;
@@ -47,7 +47,7 @@
   $('open').addEventListener('click', () => chrome.runtime.openOptionsPage());
   $('test').addEventListener('click', async () => {
     setState('writing test…');
-    const r = await chrome.runtime.sendMessage({ type: 'scnp:test-write' });
+    const r = await chrome.runtime.sendMessage({ type: 'dnp:test-write' });
     setState(r && r.ok ? 'test write ok' : 'test write failed');
     refresh();
   });

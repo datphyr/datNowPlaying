@@ -9,7 +9,7 @@
 (function (global) {
   'use strict';
 
-  var DB_NAME = 'scnp';
+  var DB_NAME = 'dnp';
   var DB_VERSION = 1;
   var STORE = 'handles';
   var KEY = 'dir';
@@ -57,7 +57,7 @@
     });
   }
 
-  global.SCNPIdb = {
+  global.DNPIdb = {
     getHandle: getHandle,
     saveHandle: saveHandle,
     clearHandle: clearHandle

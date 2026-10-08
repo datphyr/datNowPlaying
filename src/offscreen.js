@@ -5,7 +5,7 @@
  * folder picker and the writer agree on one location. Writes are
  * read-then-compare to avoid churning unchanged files.
  *
- * A diagnostics self-test ("scnp:selftest") writes into the browser's private
+ * A diagnostics self-test ("dnp:selftest") writes into the browser's private
  * OPFS sandbox and reads the bytes back, exercising the exact same code path
  * without needing a user gesture.
  */
@@ -18,7 +18,7 @@
   };
 
   async function getWritableDir() {
-    const handle = await SCNPIdb.getHandle();
+    const handle = await DNPIdb.getHandle();
     if (!handle) return { error: 'no-folder' };
     const opts = { mode: 'readwrite' };
     let perm = await handle.queryPermission(opts);
@@ -50,13 +50,13 @@
   async function fetchArtwork(url, base) {
     let candidates;
     try {
-      candidates = globalThis.SCNP && globalThis.SCNP.artworkCandidates
-        ? globalThis.SCNP.artworkCandidates(url)
+      candidates = globalThis.DNP && globalThis.DNP.artworkCandidates
+        ? globalThis.DNP.artworkCandidates(url)
         : [url];
     } catch (e) { candidates = [url]; }
     let lastErr = 'no-artwork-url';
     for (const candidate of candidates) {
-      const abs = globalThis.SCNP && globalThis.SCNP.absUrl ? globalThis.SCNP.absUrl(candidate, base) : candidate;
+      const abs = globalThis.DNP && globalThis.DNP.absUrl ? globalThis.DNP.absUrl(candidate, base) : candidate;
       try {
         const res = await fetch(abs, { credentials: 'omit', cache: 'no-store' });
         if (!res.ok) { lastErr = 'http ' + res.status; continue; }
@@ -108,7 +108,7 @@
     let dir = null;
     if (p && p.dirOverride === 'opfs') {
       const root = await navigator.storage.getDirectory();
-      dir = await root.getDirectoryHandle('scnp-selftest', { create: true });
+      dir = await root.getDirectoryHandle('dnp-selftest', { create: true });
     } else {
       const dirRes = await getWritableDir();
       if (dirRes.error) return { ok: false, error: dirRes.error };
@@ -123,7 +123,7 @@
 
   async function selftest() {
     const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle('scnp-selftest', { create: true });
+    const dir = await root.getDirectoryHandle('dnp-selftest', { create: true });
     // Build real PNG bytes in-browser and expose them via a blob: URL, so the
     // image fetch+write path is exercised without depending on host permissions.
     const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -153,17 +153,17 @@
       readBack: back,
       imageBytes,
       warning: w.warning,
-      dir: 'opfs:/scnp-selftest'
+      dir: 'opfs:/dnp-selftest'
     };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (!msg || msg.target !== 'offscreen') return false;
-    if (msg.type === 'scnp:write') {
+    if (msg.type === 'dnp:write') {
       writePayload(msg.payload || {}).then(reply, (e) => reply({ ok: false, error: String(e) }));
       return true;
     }
-    if (msg.type === 'scnp:selftest') {
+    if (msg.type === 'dnp:selftest') {
       selftest().then(reply, (e) => reply({ ok: false, error: String((e && e.message) || e) }));
       return true;
     }

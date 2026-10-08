@@ -1,5 +1,5 @@
 /*
- * SoundCloud Now Playing - service worker.
+ * datNowPlaying - service worker.
  *
  * Responsibilities:
  *   - collect per-tab state pushed by the content script
@@ -51,8 +51,8 @@ async function paintBadge() {
       await chrome.action.setTitle({
         tabId,
         title: on
-          ? `SoundCloud Now Playing: ${[st.artist, st.title].filter(Boolean).join(' — ') || 'playing'}`
-          : 'SoundCloud Now Playing'
+          ? `datNowPlaying: ${[st.artist, st.title].filter(Boolean).join(' — ') || 'playing'}`
+          : 'datNowPlaying'
       });
     } catch (e) { /* tab gone */ }
   }
@@ -77,12 +77,12 @@ async function ensureOffscreen() {
 
 async function askWriter(payload) {
   await ensureOffscreen();
-  return chrome.runtime.sendMessage({ target: 'offscreen', type: 'scnp:write', payload });
+  return chrome.runtime.sendMessage({ target: 'offscreen', type: 'dnp:write', payload });
 }
 
 async function askSelfTest() {
   await ensureOffscreen();
-  return chrome.runtime.sendMessage({ target: 'offscreen', type: 'scnp:selftest' });
+  return chrome.runtime.sendMessage({ target: 'offscreen', type: 'dnp:selftest' });
 }
 
 /* ------------------------------ reconcile -------------------------------- */
@@ -101,7 +101,7 @@ async function reconcile() {
   reconciling = (async () => {
     const settings = await getSettings();
     const states = [...tabStates.values()];
-    const { active, playing } = globalThis.SCNP.chooseActive(states);
+    const { active, playing } = globalThis.DNP.chooseActive(states);
 
     const desired = active
       ? { title: active.title || null, artist: active.artist || null, artworkUrl: active.artworkUrl || null }
@@ -165,7 +165,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
   if (msg.target === 'offscreen') return; // not ours
 
-  if (msg.type === 'scnp:state') {
+  if (msg.type === 'dnp:state') {
     const tabId = sender && sender.tab && sender.tab.id;
     if (typeof tabId === 'number') tabStates.set(tabId, msg.state);
     paintBadge();
@@ -173,17 +173,17 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return false;
   }
 
-  if (msg.type === 'scnp:get-status') {
+  if (msg.type === 'dnp:get-status') {
     (async () => {
       const { status } = await chrome.storage.local.get('status');
       const settings = await getSettings();
-      const { active, playing } = globalThis.SCNP.chooseActive([...tabStates.values()]);
+      const { active, playing } = globalThis.DNP.chooseActive([...tabStates.values()]);
       reply({ status: status || null, settings, tabs: tabStates.size, active, playing });
     })();
     return true;
   }
 
-  if (msg.type === 'scnp:set-settings') {
+  if (msg.type === 'dnp:set-settings') {
     (async () => {
       await chrome.storage.local.set({ settings: msg.settings });
       lastWritten = null;               // force re-write with any new names
@@ -193,23 +193,23 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true;
   }
 
-  if (msg.type === 'scnp:folder-changed') {
+  if (msg.type === 'dnp:folder-changed') {
     lastWritten = null;
     (async () => { await reconcile(); reply({ ok: true }); })();
     return true;
   }
 
-  if (msg.type === 'scnp:selftest') {
+  if (msg.type === 'dnp:selftest') {
     (async () => {
       try { reply(await askSelfTest()); } catch (e) { reply({ ok: false, error: String((e && e.message) || e) }); }
     })();
     return true;
   }
 
-  if (msg.type === 'scnp:test-write') {
+  if (msg.type === 'dnp:test-write') {
     (async () => {
       const settings = await getSettings();
-      const { active } = globalThis.SCNP.chooseActive([...tabStates.values()]);
+      const { active } = globalThis.DNP.chooseActive([...tabStates.values()]);
       const desired = active
         ? { title: active.title, artist: active.artist, artworkUrl: active.artworkUrl }
         : { title: 'Test Track', artist: 'Test Artist', artworkUrl: null };

@@ -1,4 +1,4 @@
-# SoundCloud Now Playing → Disk
+# datNowPlaying
 
 A Chrome (Manifest V3) extension that watches your SoundCloud tab(s), finds the track
 that is actually playing, and mirrors it to **three files** in a folder you choose:
@@ -65,7 +65,7 @@ SoundCloud tab                          extension
   It is **event-driven** (DOM `MutationObserver` + capture-phase media events), so it stays
   accurate in background tabs where timers are throttled. A 2 s interval is only a backstop.
 * **`src/background.js`** keeps the latest state per tab, picks the active one with
-  `SCNP.chooseActive` (playing & progressing & unmuted wins; ad breaks ignored), and only
+  `DNP.chooseActive` (playing & progressing & unmuted wins; ad breaks ignored), and only
   writes when the track differs from what was last written.
 * **`src/offscreen.js`** performs the disk I/O. It owns the `FileSystemDirectoryHandle`
   (persisted in IndexedDB) so the folder picker and the writer always agree. Writes are

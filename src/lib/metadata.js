@@ -201,6 +201,6 @@
     chooseActive: chooseActive
   };
 
-  global.SCNP = Object.assign(global.SCNP || {}, api);
+  global.DNP = Object.assign(global.DNP || {}, api);
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

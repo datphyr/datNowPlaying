@@ -1,5 +1,5 @@
 /*
- * Unit + integration tests for SoundCloud Now Playing.
+ * Unit + integration tests for datNowPlaying.
  *   node tests/run.js
  * No dependencies. Covers: metadata extraction (mediaSession + DOM + merge),
  * the active-tab chooser, artwork-variant logic, and the offscreen disk writer
@@ -260,8 +260,8 @@ function makeEnv() {
 
   const handlers = [];
   globalThis.chrome = { runtime: { onMessage: { addListener: (fn) => handlers.push(fn) } } };
-  globalThis.SCNP = M;
-  globalThis.SCNPIdb = { getHandle: async () => dir };
+  globalThis.DNP = M;
+  globalThis.DNPIdb = { getHandle: async () => dir };
   globalThis.fetch = async (url) => {
     fetched.push(url);
     if (/fail/.test(url)) return { ok: false, status: 404, headers: { get: () => null } };
@@ -273,7 +273,7 @@ function makeEnv() {
   };
   require(offscreenPath);
   const handler = handlers[0];
-  const write = (payload) => new Promise((resolve) => handler({ target: 'offscreen', type: 'scnp:write', payload }, {}, resolve));
+  const write = (payload) => new Promise((resolve) => handler({ target: 'offscreen', type: 'dnp:write', payload }, {}, resolve));
   return { write, files, removed, fetched, dir };
 }
 
@@ -316,7 +316,7 @@ function makeEnv() {
   }
   {
     const env = makeEnv();
-    globalThis.SCNPIdb = { getHandle: async () => null };
+    globalThis.DNPIdb = { getHandle: async () => null };
     const res = await env.write({ dir: true, files: {}, title: 'x' });
     test('reports no-folder when unset', () => eq(res, { ok: false, error: 'no-folder' }));
   }

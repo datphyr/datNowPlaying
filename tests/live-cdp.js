@@ -1,13 +1,13 @@
 'use strict';
 // Full live test over CDP, built on the proven probe harness.
 //   node live.js <port> <extPath>
-// Writes progress to C:\temp-scnp\live.txt and result to stdout.
+// Writes progress to C:\temp-dnp\live.txt and result to stdout.
 const fs = require('fs');
 const http = require('http');
 
 const PORT = parseInt(process.argv[2] || '9227', 10);
-const EXT = process.argv[3] || 'C:\\temp-scnp\\ext';
-const LOG = 'C:\\temp-scnp\\live.txt';
+const EXT = process.argv[3] || 'C:\\temp-dnp\\ext';
+const LOG = 'C:\\temp-dnp\\live.txt';
 const lines = [];
 function log(s) { lines.push(s); fs.writeFileSync(LOG, lines.join('\n')); }
 let passed = 0, failed = 0;
@@ -112,18 +112,21 @@ async function evalInContext(cdp, contextId, expression) {
       const s = (await cdp.send('Target.attachToTarget', { targetId: sw.targetId, flatten: true })).sessionId;
       await cdp.send('Runtime.enable', {}, s);
       const mf = await evalIn(cdp, s, 'chrome.runtime.getManifest().name + " v" + chrome.runtime.getManifest().version');
-      check('manifest readable in SW', /SoundCloud Now Playing/.test(mf), mf);
+      check('manifest readable in SW', /datNowPlaying/.test(mf), mf);
       const off = await evalIn(cdp, s, `(async()=>{ await ensureOffscreen(); return await chrome.offscreen.hasDocument(); })()`);
       check('offscreen writer document created', off === true, 'hasDocument=' + off);
       const st = await evalIn(cdp, s, `(async()=>{ try { return await askSelfTest(); } catch(e){ return {ok:false,error:String(e)}; } })()`);
       check('writer writes 3 files + reads back (OPFS)', st && st.ok === true, JSON.stringify(st));
       if (st && st.ok) log('  self-test readBack=' + JSON.stringify(st.readBack) + ' imageBytes=' + st.imageBytes);
-      await sleep(1000);
-      const tabsInfo = await evalIn(cdp, s, 'JSON.stringify(Array.from(tabStates.values()).map(v=>({playing:v.playing,title:v.title,artist:v.artist,artwork:!!v.artworkUrl,sources:v.sources})))');
+      // Poll: the content script's first message may not have arrived yet.
       let tabsArr = [];
-      try { tabsArr = JSON.parse(tabsInfo); } catch (e) {}
-      check('background received state from SoundCloud tab', tabsArr.length >= 1, tabsInfo);
-      if (tabsArr.length) log('  tab state in background: ' + tabsInfo);
+      for (let i = 0; i < 30 && tabsArr.length === 0; i++) {
+        const tabsInfo = await evalIn(cdp, s, 'JSON.stringify(Array.from(tabStates.values()).map(v=>({playing:v.playing,title:v.title,artist:v.artist,artwork:!!v.artworkUrl,sources:v.sources})))');
+        try { tabsArr = JSON.parse(tabsInfo); } catch (e) { tabsArr = []; }
+        if (tabsArr.length === 0) await sleep(500);
+      }
+      check('background received state from SoundCloud tab', tabsArr.length >= 1, JSON.stringify(tabsArr));
+      if (tabsArr.length) log('  tab state in background: ' + JSON.stringify(tabsArr));
     }
 
     // content script on the real page
@@ -138,10 +141,10 @@ async function evalInContext(cdp, contextId, expression) {
     check('content script isolated world exists', !!iso, iso ? ('ctx ' + iso.id + ' ' + iso.origin) : 'no isolated context for ' + extId);
     if (iso) {
       cdp._csession = page;
-      const has = await evalInContext(cdp, iso.id, 'typeof globalThis.__SCNP_READ__ === "function"');
+      const has = await evalInContext(cdp, iso.id, 'typeof globalThis.__DNP_READ__ === "function"');
       check('content script injected (isolated world)', has === true, 'typeof=' + has);
       if (has) {
-        const stt = await evalInContext(cdp, iso.id, 'JSON.stringify(globalThis.__SCNP_READ__())');
+        const stt = await evalInContext(cdp, iso.id, 'JSON.stringify(globalThis.__DNP_READ__())');
         const p = JSON.parse(stt);
         check('content script returns a state object', p && 'playing' in p, stt);
         log('  state: playing=' + p.playing + ' title=' + JSON.stringify(p.title) + ' artist=' + JSON.stringify(p.artist) + ' sources=' + JSON.stringify(p.sources));

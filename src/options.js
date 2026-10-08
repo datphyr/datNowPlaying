@@ -18,7 +18,7 @@
 
   async function showFolder() {
     try {
-      const handle = await SCNPIdb.getHandle();
+      const handle = await DNPIdb.getHandle();
       const el = $('folder');
       if (handle) { el.textContent = handle.name; el.classList.remove('unset'); }
       else { el.textContent = 'No folder chosen yet'; el.classList.add('unset'); }
@@ -31,13 +31,13 @@
       return;
     }
     try {
-      const handle = await window.showDirectoryPicker({ id: 'scnp', mode: 'readwrite', startIn: 'downloads' });
+      const handle = await window.showDirectoryPicker({ id: 'dnp', mode: 'readwrite', startIn: 'downloads' });
       // Ask for write permission while we still hold the user gesture.
       await handle.requestPermission({ mode: 'readwrite' });
-      await SCNPIdb.saveHandle(handle);
+      await DNPIdb.saveHandle(handle);
       await showFolder();
       log($('log'), 'Folder set: ' + handle.name + ' — writing enabled.', 'ok');
-      chrome.runtime.sendMessage({ type: 'scnp:folder-changed' });
+      chrome.runtime.sendMessage({ type: 'dnp:folder-changed' });
     } catch (e) {
       if (e && e.name === 'AbortError') { log($('log'), 'Folder selection cancelled.'); return; }
       log($('log'), 'Could not use folder: ' + (e && e.message), 'err');
@@ -45,7 +45,7 @@
   }
 
   async function clearFolder() {
-    await SCNPIdb.clearHandle();
+    await DNPIdb.clearHandle();
     await showFolder();
     log($('log'), 'Folder cleared.', '');
   }
@@ -60,14 +60,14 @@
         image: ($('fileImage').value.trim() || 'cover').replace(/\.[a-z0-9]+$/i, '')
       }
     };
-    const res = await chrome.runtime.sendMessage({ type: 'scnp:set-settings', settings });
+    const res = await chrome.runtime.sendMessage({ type: 'dnp:set-settings', settings });
     log($('saveLog'), res && res.ok ? 'Saved.' : 'Save failed.', res && res.ok ? 'ok' : 'err');
     setTimeout(() => log($('saveLog'), ''), 1500);
   }
 
   async function testWrite() {
     log($('saveLog'), 'Writing…');
-    const res = await chrome.runtime.sendMessage({ type: 'scnp:test-write' });
+    const res = await chrome.runtime.sendMessage({ type: 'dnp:test-write' });
     const r = res && res.result;
     if (res && res.ok) {
       const names = (r.written || []).map((w) => w.name + (w.changed ? '' : ' (unchanged)')).join(', ');
@@ -81,7 +81,7 @@
 
   async function selfTest() {
     log($('saveLog'), 'Running writer self-test (browser sandbox)…');
-    const r = await chrome.runtime.sendMessage({ type: 'scnp:selftest' });
+    const r = await chrome.runtime.sendMessage({ type: 'dnp:selftest' });
     if (r && r.ok) {
       log($('saveLog'), 'Self-test OK — wrote 3 files and read them back (image ' + r.imageBytes + ' bytes).', 'ok');
     } else {

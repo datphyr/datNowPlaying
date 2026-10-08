@@ -1,5 +1,5 @@
 /*
- * SoundCloud Now Playing - content script (isolated world).
+ * datNowPlaying - content script (isolated world).
  *
  * Reads the now-playing state from the page (mediaSession metadata + the
  * playbackSoundBadge DOM + any <audio>/<video> elements) and pushes it to the
@@ -12,7 +12,7 @@
 (function () {
   'use strict';
 
-  var M = globalThis.SCNP;
+  var M = globalThis.DNP;
   if (!M) return;
 
   var lastKey = '';
@@ -77,7 +77,7 @@
     if (key === lastKey && now - lastSentAt < 900) return;
     lastKey = key;
     lastSentAt = now;
-    try { chrome.runtime.sendMessage({ type: 'scnp:state', state: st }); } catch (e) { /* SW asleep */ }
+    try { chrome.runtime.sendMessage({ type: 'dnp:state', state: st }); } catch (e) { /* SW asleep */ }
   }
 
   var scheduled = false;
@@ -111,7 +111,7 @@
   document.addEventListener('visibilitychange', send);
 
   chrome.runtime.onMessage.addListener(function (msg, sender, reply) {
-    if (msg && msg.type === 'scnp:request') {
+    if (msg && msg.type === 'dnp:request') {
       try { reply(readState()); } catch (e) { reply({ ok: false, error: String(e) }); }
       return true;
     }
@@ -119,7 +119,7 @@
   });
 
   // Test hook: callable from the extension's isolated world via CDP. Invisible to the page.
-  try { globalThis.__SCNP_READ__ = readState; } catch (e) { /* noop */ }
+  try { globalThis.__DNP_READ__ = readState; } catch (e) { /* noop */ }
 
   send();
 })();
