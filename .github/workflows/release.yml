@@ -79,6 +79,7 @@ jobs:
           # the archive must actually contain what Chrome loads
           unzip -l dist/datNowPlaying-smoke.zip | grep -q 'manifest.json'
           unzip -l dist/datNowPlaying-smoke.zip | grep -q 'src/background.js'
+          unzip -l dist/datNowPlaying-smoke.zip | grep -q 'src/content.js'
           unzip -l dist/datNowPlaying-smoke.zip | grep -q 'icons/icon-128.png'
 
       - name: Compute tag name

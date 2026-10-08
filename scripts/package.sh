@@ -17,7 +17,7 @@ archive="dist/${name}.zip"
 
 rm -rf "dist/${name}" "$archive"
 mkdir -p "dist/${name}"
-cp manifest.json "dist/${name}/"
+cp manifest.json README.md LICENSE "dist/${name}/"
 cp -r src icons "dist/${name}/"
 
 if command -v zip >/dev/null 2>&1; then
