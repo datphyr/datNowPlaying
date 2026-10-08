@@ -109,20 +109,55 @@ async function evalInContext(cdp, contextId, expression) {
     check('service worker running for our extension', !!sw, sw ? sw.url : 'not found');
 
     if (sw) {
-      const s = (await cdp.send('Target.attachToTarget', { targetId: sw.targetId, flatten: true })).sessionId;
-      await cdp.send('Runtime.enable', {}, s);
-      const mf = await evalIn(cdp, s, 'chrome.runtime.getManifest().name + " v" + chrome.runtime.getManifest().version');
+      // Service workers can be suspended and restarted mid-run; (re)attach on demand.
+      const swSessions = new Map();
+      const swEval = async (expression, tries = 8) => {
+        for (let i = 0; i < tries; i++) {
+          const t = (await cdp.send('Target.getTargets')).targetInfos.find((tt) => tt.type === 'service_worker' && tt.url.indexOf(extId) !== -1);
+          if (t) {
+            try {
+              let sid = swSessions.get(t.targetId);
+              if (!sid) {
+                sid = (await cdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: true })).sessionId;
+                swSessions.set(t.targetId, sid);
+                await cdp.send('Runtime.enable', {}, sid);
+              }
+              return await evalIn(cdp, sid, expression);
+            } catch (e) { swSessions.delete(t.targetId); }
+          } else {
+            // Worker asleep: nudge it with a fresh SoundCloud tab.
+            try { await cdp.send('Target.createTarget', { url: 'https://soundcloud.com/' }); } catch (e) { /* noop */ }
+          }
+          await sleep(600);
+        }
+        throw new Error('swEval gave up on: ' + expression.slice(0, 60));
+      };
+
+      const mf = await swEval('chrome.runtime.getManifest().name + " v" + chrome.runtime.getManifest().version');
       check('manifest readable in SW', /datNowPlaying/.test(mf), mf);
-      const off = await evalIn(cdp, s, `(async()=>{ await ensureOffscreen(); return await chrome.offscreen.hasDocument(); })()`);
+      const off = await swEval(`(async()=>{ await ensureOffscreen(); return await chrome.offscreen.hasDocument(); })()`);
       check('offscreen writer document created', off === true, 'hasDocument=' + off);
-      const st = await evalIn(cdp, s, `(async()=>{ try { return await askSelfTest(); } catch(e){ return {ok:false,error:String(e)}; } })()`);
-      check('writer writes 3 files + reads back (OPFS)', st && st.ok === true, JSON.stringify(st));
+      const st = await swEval(`(async()=>{ try { return await askSelfTest(); } catch(e){ return {ok:false,error:String(e)}; } })()`);
+      check('writer writes files + json + cover and reads back (OPFS)', st && st.ok === true, JSON.stringify(st));
       if (st && st.ok) log('  self-test readBack=' + JSON.stringify(st.readBack) + ' imageBytes=' + st.imageBytes);
-      // Poll: the content script's first message may not have arrived yet.
+
+      // Tier 1: hit the real SoundCloud API from the extension's own worker
+      const apiRes = await swEval(`(async()=>{ try { const r = await DNPapi.fetchTrack('https://soundcloud.com/forss/flickermood'); return r.ok ? r.fields : { error: r.error }; } catch(e){ return { error: String(e) }; } })()`);
+      check('Tier 1: resolved a real track from the SoundCloud API', !!(apiRes && apiRes.genre), JSON.stringify(apiRes).slice(0, 300));
+      if (apiRes && apiRes.genre) log('  api: genre=' + apiRes.genre + ' label=' + apiRes.label + ' isrc=' + apiRes.isrc + ' plays=' + apiRes.playbackCount + ' writer=' + apiRes.writer);
+
+      // Value assembly for the enabled components
+      const asm = await swEval(`(()=>{ const v = buildValues({ title:'T', artist:'A', playing:true, position:30, duration:120, volume:80, muted:false }, null); return JSON.stringify({ elapsed:v.elapsed, remaining:v.remaining, progress:v.progress, volume:v.volume, playing:v.playing, title:v.title }); })()`);
+      let av = {}; try { av = JSON.parse(asm); } catch (e) {}
+      check('assembles live values correctly', av.elapsed && av.elapsed.json === 30 && av.progress && av.progress.json === 25 && av.remaining && av.remaining.json === 90 && av.volume && av.volume.json === 80, asm);
+
+      // Poll for the content script's first message reaching the background.
       let tabsArr = [];
       for (let i = 0; i < 30 && tabsArr.length === 0; i++) {
-        const tabsInfo = await evalIn(cdp, s, 'JSON.stringify(Array.from(tabStates.values()).map(v=>({playing:v.playing,title:v.title,artist:v.artist,artwork:!!v.artworkUrl,sources:v.sources})))');
-        try { tabsArr = JSON.parse(tabsInfo); } catch (e) { tabsArr = []; }
+        try {
+          const tabsInfo = await swEval('JSON.stringify(Array.from(tabStates.values()).map(v=>({playing:v.playing,title:v.title,artist:v.artist,artwork:!!v.artworkUrl,sources:v.sources})))', 2);
+          tabsArr = JSON.parse(tabsInfo);
+        } catch (e) { tabsArr = []; }
         if (tabsArr.length === 0) await sleep(500);
       }
       check('background received state from SoundCloud tab', tabsArr.length >= 1, JSON.stringify(tabsArr));

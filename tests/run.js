@@ -265,9 +265,10 @@ function makeEnv() {
   globalThis.fetch = async (url) => {
     fetched.push(url);
     if (/fail/.test(url)) return { ok: false, status: 404, headers: { get: () => null } };
+    const type = /webp/.test(url) ? 'image/webp' : 'image/jpeg';
     return {
       ok: true, status: 200,
-      headers: { get: (h) => (h.toLowerCase() === 'content-type' ? 'image/jpeg' : null) },
+      headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : null) },
       async arrayBuffer() { return Uint8Array.from([1, 2, 3, 4]).buffer; }
     };
   };
@@ -278,13 +279,74 @@ function makeEnv() {
 }
 
 (async () => {
+  const C = require(path.join(__dirname, '..', 'src', 'lib', 'components.js'));
+  const A = require(path.join(__dirname, '..', 'src', 'lib', 'api.js'));
+
+  /* ------------------------ component registry ------------------------ */
+  test('registry: core three default on', () => {
+    const d = C.defaults();
+    eq(d.components.title.enabled, true);
+    eq(d.components.artist.enabled, true);
+    eq(d.components.cover.enabled, true);
+    eq(d.components.cover.file, 'cover');
+  });
+  test('registry: non-dynamic tier 0 + tier 1 default on, dynamic default off', () => {
+    const d = C.defaults();
+    eq(d.components.genre.enabled, true);      // tier 1
+    eq(d.components.label.enabled, true);      // tier 1
+    eq(d.components.album.enabled, true);      // tier 0 static
+    eq(d.components.elapsed.enabled, false);   // dynamic
+    eq(d.components.volume.enabled, false);    // dynamic
+  });
+  test('registry: merge fills missing components from defaults', () => {
+    const m = C.merge({ components: { genre: { enabled: false, file: 'g.txt' } } });
+    eq(m.components.genre.enabled, false);
+    eq(m.components.genre.file, 'g.txt');
+    eq(m.components.title.enabled, true);      // untouched -> default
+  });
+  test('registry: every component has a unique id and file', () => {
+    const ids = C.ALL.map((c) => c.id);
+    eq(ids.length, new Set(ids).size);
+    const files = C.ALL.map((c) => c.file);
+    eq(files.length, new Set(files).size);
+  });
+
+  /* --------------------------- api field picker ----------------------- */
+  test('api: pickTrackFields maps the SoundCloud payload', () => {
+    const f = A.pickTrackFields({
+      genre: 'Electronic', tag_list: 'downtempo', label_name: 'sonarkollektiv',
+      release_date: '2003-06-02T00:00:00Z', created_at: '2007-09-22T14:45:46Z',
+      license: 'all-rights-reserved', playback_count: 969998, likes_count: 2616,
+      reposts_count: 413, comment_count: 399, download_count: 19395,
+      waveform_url: 'https://wave.sndcdn.com/x_m.json', artwork_url: 'https://i1.sndcdn.com/a-large.jpg',
+      monetization_model: 'AD_SUPPORTED', bpm: null, key_signature: null,
+      user: { username: 'Forss', permalink_url: 'https://soundcloud.com/forss', followers_count: 132117 },
+      publisher_metadata: { isrc: 'DEP960300042', publisher: 'Universal Music Publishing', writer_composer: 'Eric Wahlforss' }
+    });
+    eq(f.genre, 'Electronic');
+    eq(f.label, 'sonarkollektiv');
+    eq(f.isrc, 'DEP960300042');
+    eq(f.writer, 'Eric Wahlforss');
+    eq(f.uploader, 'Forss');
+    eq(f.playbackCount, '969998');
+    eq(f.coverUrl, 'https://i1.sndcdn.com/a-large.jpg');
+    eq(f.bpm, '');   // null -> empty string, not 'null'
+  });
+
+  /* ----------------------- offscreen writer --------------------------- */
   {
     const env = makeEnv();
-    const res = await env.write({ dir: true, files: { title: 'track.txt', artist: 'artist.txt', image: 'cover' }, title: 'T', artist: 'A', artworkUrl: 'https://i1.sndcdn.com/x-large.jpg' });
-    test('writes the three files', () => {
+    const res = await env.write({
+      files: [{ name: 'track.txt', text: 'T' }, { name: 'artist.txt', text: 'A' }, { name: 'genre.txt', text: 'Electronic' }],
+      json: { name: 'nowplaying.json', text: JSON.stringify({ title: 'T', genre: 'Electronic' }, null, 2) },
+      image: { name: 'cover', url: 'https://i1.sndcdn.com/x-large.jpg' }
+    });
+    test('writes one file per component + json + cover', () => {
       ok(res.ok, 'not ok: ' + JSON.stringify(res));
       eq(env.files.get('track.txt').data.toString(), 'T');
       eq(env.files.get('artist.txt').data.toString(), 'A');
+      eq(env.files.get('genre.txt').data.toString(), 'Electronic');
+      eq(JSON.parse(env.files.get('nowplaying.json').data.toString()).genre, 'Electronic');
       ok(env.files.get('cover.jpg'), 'cover.jpg missing');
       eq(res.imageName, 'cover.jpg');
     });
@@ -292,14 +354,18 @@ function makeEnv() {
       eq(env.fetched[0], 'https://i1.sndcdn.com/x-original.jpg');
     });
     test('reports unchanged on a repeat write', async () => {
-      const res2 = await env.write({ dir: true, files: { title: 'track.txt', artist: 'artist.txt', image: 'cover' }, title: 'T', artist: 'A', artworkUrl: 'https://i1.sndcdn.com/x-large.jpg' });
-      const t = res2.written.find((w) => w.name === 'track.txt');
-      eq(t.changed, false);
+      const res2 = await env.write({
+        files: [{ name: 'track.txt', text: 'T' }],
+        json: { name: 'nowplaying.json', text: JSON.stringify({ title: 'T', genre: 'Electronic' }, null, 2) },
+        image: { name: 'cover', url: 'https://i1.sndcdn.com/x-large.jpg' }
+      });
+      eq(res2.written.find((w) => w.name === 'track.txt').changed, false);
+      eq(res2.written.find((w) => w.name === 'nowplaying.json').changed, false);
     });
   }
   {
     const env = makeEnv();
-    const res = await env.write({ dir: true, files: { title: 'track.txt', artist: 'artist.txt', image: 'cover' }, title: '', artist: '', artworkUrl: null, clear: true });
+    const res = await env.write({ files: [{ name: 'track.txt', text: '' }, { name: 'genre.txt', text: '' }], clear: true });
     test('clear empties the text files', () => {
       ok(res.ok);
       eq(env.files.get('track.txt').data.toString(), '');
@@ -307,17 +373,31 @@ function makeEnv() {
   }
   {
     const env = makeEnv();
-    const res = await env.write({ dir: true, files: { title: 'track.txt', artist: 'artist.txt', image: 'cover' }, title: 'T', artist: 'A', artworkUrl: 'https://i1.sndcdn.com/x-fail.jpg' });
-    test('survives an artwork fetch failure and still writes text', () => {
+    const res = await env.write({
+      files: [{ name: 'track.txt', text: 'T' }],
+      json: { name: 'nowplaying.json', text: '{}' },
+      image: { name: 'cover', url: 'https://i1.sndcdn.com/x-fail.jpg' }
+    });
+    test('survives an artwork fetch failure and still writes text + json', () => {
       ok(res.ok, 'not ok');
       eq(env.files.get('track.txt').data.toString(), 'T');
+      ok(env.files.get('nowplaying.json'), 'json missing');
       ok(/fetch/.test(res.warning || ''), 'expected a warning, got ' + JSON.stringify(res.warning));
     });
   }
   {
     const env = makeEnv();
+    await env.write({ files: [{ name: 'cover', text: '' }], image: { name: 'cover', url: 'https://i1.sndcdn.com/x-large.jpg' } });
+    const res = await env.write({ image: { name: 'cover', url: 'https://i1.sndcdn.com/x-webp.webp', lastImageName: 'cover.jpg' } });
+    test('removes the previous cover when the extension changes', () => {
+      eq(res.imageName, 'cover.webp');
+      ok(env.removed.includes('cover.jpg'), 'cover.jpg not removed: ' + JSON.stringify(env.removed));
+    });
+  }
+  {
+    const env = makeEnv();
     globalThis.DNPIdb = { getHandle: async () => null };
-    const res = await env.write({ dir: true, files: {}, title: 'x' });
+    const res = await env.write({ files: [{ name: 'x.txt', text: 'x' }] });
     test('reports no-folder when unset', () => eq(res, { ok: false, error: 'no-folder' }));
   }
 

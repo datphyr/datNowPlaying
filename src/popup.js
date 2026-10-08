@@ -35,9 +35,13 @@
     } else if (status && status.error) {
       folderEl.className = 'folder warn';
       folderEl.textContent = '⚠ ' + status.error;
+    } else if (status && status.apiError) {
+      folderEl.className = 'folder warn';
+      folderEl.textContent = '⚠ SoundCloud metadata: ' + status.apiError;
     } else if (status && status.written && status.written.length) {
+      const changed = status.written.filter((w) => w.changed !== false).length;
       folderEl.className = 'folder';
-      folderEl.textContent = 'Saved: ' + status.written.map((w) => w.name).join(', ');
+      folderEl.textContent = 'Saved ' + status.written.length + ' file(s)' + (changed ? ' (' + changed + ' updated)' : ' (unchanged)');
     } else {
       folderEl.className = 'folder';
       folderEl.textContent = 'Last write: —';

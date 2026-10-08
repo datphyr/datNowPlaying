@@ -5,9 +5,15 @@
  * folder picker and the writer agree on one location. Writes are
  * read-then-compare to avoid churning unchanged files.
  *
- * A diagnostics self-test ("dnp:selftest") writes into the browser's private
- * OPFS sandbox and reads the bytes back, exercising the exact same code path
- * without needing a user gesture.
+ * Payload shape (from the service worker):
+ *   { files: [{name, text}],        // one entry per enabled non-image component
+ *     json:  {name, text} | null,   // nowplaying.json
+ *     image: {name, url, lastImageName} | null,
+ *     clear: bool }
+ *
+ * A diagnostics self-test ("dnp:selftest") writes the same shape into the
+ * browser's private OPFS sandbox and reads the bytes back, exercising this code
+ * path without needing a user gesture.
  */
 (function () {
   'use strict';
@@ -22,9 +28,7 @@
     if (!handle) return { error: 'no-folder' };
     const opts = { mode: 'readwrite' };
     let perm = await handle.queryPermission(opts);
-    if (perm !== 'granted') {
-      perm = await handle.requestPermission(opts);
-    }
+    if (perm !== 'granted') perm = await handle.requestPermission(opts);
     if (perm !== 'granted') return { error: 'permission-required' };
     return { handle };
   }
@@ -32,8 +36,7 @@
   async function readExisting(dir, name) {
     try {
       const fh = await dir.getFileHandle(name);
-      const file = await fh.getFile();
-      return await file.text();
+      return await (await fh.getFile()).text();
     } catch (e) { return null; }
   }
 
@@ -47,12 +50,18 @@
     return { name, changed: true };
   }
 
+  async function writeBytes(dir, name, bytes) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(bytes);
+    await w.close();
+    return { name, changed: true };
+  }
+
   async function fetchArtwork(url, base) {
     let candidates;
     try {
-      candidates = globalThis.DNP && globalThis.DNP.artworkCandidates
-        ? globalThis.DNP.artworkCandidates(url)
-        : [url];
+      candidates = globalThis.DNP && globalThis.DNP.artworkCandidates ? globalThis.DNP.artworkCandidates(url) : [url];
     } catch (e) { candidates = [url]; }
     let lastErr = 'no-artwork-url';
     for (const candidate of candidates) {
@@ -71,41 +80,41 @@
 
   // Core writer. `dir` is a FileSystemDirectoryHandle (user folder or OPFS).
   async function writeTo(dir, p) {
-    const files = p.files || { title: 'track.txt', artist: 'artist.txt', image: 'cover' };
+    p = p || {};
     const written = [];
+    let imageName = null;
 
     if (p.clear) {
-      await writeTextIfChanged(dir, files.title, '');
-      await writeTextIfChanged(dir, files.artist, '');
+      for (const f of (p.files || [])) written.push(await writeTextIfChanged(dir, f.name, ''));
       return { ok: true, written, cleared: true };
     }
 
-    written.push(await writeTextIfChanged(dir, files.title, p.title || ''));
-    written.push(await writeTextIfChanged(dir, files.artist, p.artist || ''));
+    for (const f of (p.files || [])) {
+      written.push(await writeTextIfChanged(dir, f.name, f.text == null ? '' : String(f.text)));
+    }
 
-    let imageName = null;
-    if (p.artworkUrl) {
-      const art = await fetchArtwork(p.artworkUrl, p.base);
+    if (p.json && p.json.name) {
+      written.push(await writeTextIfChanged(dir, p.json.name, p.json.text || ''));
+    }
+
+    if (p.image && p.image.url) {
+      const art = await fetchArtwork(p.image.url, p.base);
       if (art && art.buffer) {
-        const baseName = files.image || 'cover';
-        imageName = baseName + '.' + art.ext;
-        const fh = await dir.getFileHandle(imageName, { create: true });
-        const w = await fh.createWritable();
-        await w.write(art.buffer);
-        await w.close();
-        written.push({ name: imageName, changed: true });
-        if (p.lastImageName && p.lastImageName !== imageName) {
-          try { await dir.removeEntry(p.lastImageName); } catch (e) { /* ignore */ }
+        imageName = (p.image.name || 'cover') + '.' + art.ext;
+        written.push(await writeBytes(dir, imageName, art.buffer));
+        if (p.image.lastImageName && p.image.lastImageName !== imageName) {
+          try { await dir.removeEntry(p.image.lastImageName); } catch (e) { /* ignore */ }
         }
       } else {
         return { ok: true, written, imageName: null, warning: 'artwork fetch failed: ' + (art && art.error) };
       }
     }
+
     return { ok: true, written, imageName };
   }
 
   async function writePayload(p) {
-    let dir = null;
+    let dir;
     if (p && p.dirOverride === 'opfs') {
       const root = await navigator.storage.getDirectory();
       dir = await root.getDirectoryHandle('dnp-selftest', { create: true });
@@ -114,41 +123,47 @@
       if (dirRes.error) return { ok: false, error: dirRes.error };
       dir = dirRes.handle;
     }
-    try {
-      return await writeTo(dir, p);
-    } catch (e) {
-      return { ok: false, error: String((e && e.name ? e.name + ': ' : '') + ((e && e.message) || e)) };
-    }
+    try { return await writeTo(dir, p); }
+    catch (e) { return { ok: false, error: String((e && e.name ? e.name + ': ' : '') + ((e && e.message) || e)) }; }
   }
 
   async function selftest() {
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle('dnp-selftest', { create: true });
-    // Build real PNG bytes in-browser and expose them via a blob: URL, so the
-    // image fetch+write path is exercised without depending on host permissions.
+    // Real PNG bytes via a blob: URL, so the image path is exercised without
+    // depending on host permissions.
     const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
-    const sample = { files: { title: 'track.txt', artist: 'artist.txt', image: 'cover' }, title: 'Self-test Track', artist: 'Self-test Artist', artworkUrl: objectUrl };
+    const sample = {
+      files: [
+        { name: 'track.txt', text: 'Self-test Track' },
+        { name: 'artist.txt', text: 'Self-test Artist' },
+        { name: 'genre.txt', text: 'Self-test Genre' }
+      ],
+      json: { name: 'nowplaying.json', text: JSON.stringify({ title: 'Self-test Track', genre: 'Self-test Genre' }, null, 2) },
+      image: { name: 'cover', url: objectUrl }
+    };
     let w;
-    try {
-      w = await writeTo(dir, sample);
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
+    try { w = await writeTo(dir, sample); }
+    finally { URL.revokeObjectURL(objectUrl); }
+
     const back = {
       track: await readExisting(dir, 'track.txt'),
-      artist: await readExisting(dir, 'artist.txt')
+      artist: await readExisting(dir, 'artist.txt'),
+      genre: await readExisting(dir, 'genre.txt'),
+      json: await readExisting(dir, 'nowplaying.json')
     };
     let imageBytes = 0;
-    try {
-      const fh = await dir.getFileHandle('cover.png');
-      imageBytes = (await fh.getFile()).size;
-    } catch (e) { /* none */ }
+    try { imageBytes = (await (await dir.getFileHandle('cover.png')).getFile()).size; } catch (e) { /* none */ }
+
+    let jsonOk = false;
+    try { jsonOk = JSON.parse(back.json).genre === 'Self-test Genre'; } catch (e) { /* noop */ }
+
     return {
-      ok: w.ok && back.track === sample.title && back.artist === sample.artist && imageBytes > 0,
+      ok: w.ok && back.track === 'Self-test Track' && back.artist === 'Self-test Artist' && jsonOk && imageBytes > 0,
       wrote: w.written,
       readBack: back,
       imageBytes,

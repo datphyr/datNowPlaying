@@ -19,22 +19,25 @@
   var lastSentAt = 0;
 
   function mediaInfo() {
-    var playing = false, position = 0, muted = false, duration = 0;
+    var playing = false, position = 0, muted = false, duration = 0, volume = null;
     var els = document.querySelectorAll('audio, video');
+    var best = null;
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
       try {
         if (!el.paused && !el.ended && el.readyState >= 1 && el.currentTime > 0) {
           playing = true;
-          if (el.currentTime > position) position = el.currentTime;
+          if (el.currentTime > position) { position = el.currentTime; best = el; }
           if (el.duration && isFinite(el.duration)) duration = el.duration;
           if (el.muted || el.volume === 0) muted = true;
         } else if (el.currentTime > position) {
           position = el.currentTime;
+          if (!best) best = el;
         }
       } catch (e) { /* detached element */ }
     }
-    return { mediaPlaying: playing, position: position, muted: muted, duration: duration };
+    if (best) volume = Math.round((best.volume || 0) * 100);
+    return { mediaPlaying: playing, position: position, muted: muted, duration: duration, volume: volume };
   }
 
   function readState() {
@@ -53,6 +56,7 @@
       trackUrl: meta.trackUrl,
       isAd: meta.isAd,
       muted: media.muted,
+      volume: media.volume,
       position: Math.round(media.position * 1000) / 1000,
       duration: media.duration ? Math.round(media.duration) : null,
       mediaPlaying: media.mediaPlaying,

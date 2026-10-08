@@ -10,14 +10,15 @@
       font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       margin: 0; padding: 28px; color: #111; background: #fafafa;
     }
-    .wrap { max-width: 640px; margin: 0 auto; }
+    .wrap { max-width: 760px; margin: 0 auto; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     .sub { color: #666; margin: 0 0 24px; }
     section {
       background: #fff; border: 1px solid #e4e4e4; border-radius: 10px;
       padding: 18px 20px; margin-bottom: 16px;
     }
-    section h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: #777; margin: 0 0 14px; }
+    section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #777; margin: 0 0 6px; }
+    section .blurb { color: #888; font-size: 12px; margin: 0 0 14px; }
     .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .folder {
       flex: 1 1 260px; min-width: 200px; padding: 10px 12px; border-radius: 8px;
@@ -25,32 +26,31 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .folder.unset { color: #999; font-style: italic; font-family: inherit; }
-    button {
-      font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px; cursor: pointer;
-      border: 1px solid transparent; transition: filter .15s;
-    }
+    button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: filter .15s; }
     button:hover { filter: brightness(.95); }
     button:disabled { opacity: .5; cursor: default; }
     .primary { background: var(--sc); color: #fff; }
     .ghost { background: #fff; border-color: #ccc; }
-    label.field { display: block; margin-bottom: 12px; }
-    label.field span { display: block; color: #555; margin-bottom: 4px; font-size: 13px; }
-    label.field input[type=text] {
-      width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 7px; font: inherit;
-    }
-    .check { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; }
-    .check input { margin-top: 3px; }
-    .check .hint { color: #777; font-size: 12px; }
-    #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: #444; margin-top: 10px; min-height: 18px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 2px; }
+    .comp { display: grid; grid-template-columns: 24px 1fr 190px; gap: 10px; align-items: center; padding: 5px 6px; border-radius: 7px; }
+    .comp:hover { background: #f7f7f7; }
+    .comp input[type=checkbox] { margin: 0; width: 16px; height: 16px; }
+    .comp .name { cursor: pointer; }
+    .comp .tier { font-size: 11px; color: #aaa; margin-left: 6px; }
+    .comp input[type=text] { padding: 5px 8px; border: 1px solid #dcdcdc; border-radius: 6px; font: inherit; font-size: 12px; width: 100%; }
+    .comp.off .name, .comp.off input[type=text] { opacity: .45; }
+    .toolbar { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+    .toolbar.spread { justify-content: space-between; }
+    #log, #saveLog { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: #444; margin-top: 10px; min-height: 16px; }
     .ok { color: #157f3b; } .err { color: #c02; }
-    .files { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-    @media (max-width: 560px) { .files { grid-template-columns: 1fr; } }
+    .hint { color: #777; font-size: 12px; }
+    .mini { cursor: pointer; user-select: none; font-size: 12px; color: #666; margin-left: 4px; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>datNowPlaying</h1>
-    <p class="sub">Mirrors the currently playing SoundCloud track to three files in a folder you choose.</p>
+    <p class="sub">Mirrors the currently playing SoundCloud track to a folder you choose — as one <code>nowplaying.json</code> and/or one file per field.</p>
 
     <section>
       <h2>Save location</h2>
@@ -63,33 +63,29 @@
     </section>
 
     <section>
-      <h2>File names</h2>
-      <div class="files">
-        <label class="field"><span>Track title</span><input id="fileTitle" type="text" value="track.txt" /></label>
-        <label class="field"><span>Artist</span><input id="fileArtist" type="text" value="artist.txt" /></label>
-        <label class="field"><span>Cover (extension auto)</span><input id="fileImage" type="text" value="cover" /></label>
-      </div>
+      <h2>Output</h2>
+      <label class="comp"><input id="writeJson" type="checkbox" checked /><span class="name">Write <b>nowplaying.json</b></span><input id="jsonFile" type="text" value="nowplaying.json" /></label>
+      <label class="comp"><input id="writeFiles" type="checkbox" checked /><span class="name">Write one file per field</span><span></span></label>
+      <label class="comp"><input id="fetchApi" type="checkbox" checked /><span class="name">Fetch SoundCloud metadata<span class="tier">(genre, label, counts, ISRC…)</span></span><span></span></label>
+      <label class="comp"><input id="enabled" type="checkbox" checked /><span class="name">Enabled</span><span></span></label>
+      <label class="comp"><input id="clearOnStop" type="checkbox" /><span class="name">Clear files when playback stops</span><span></span></label>
     </section>
 
+    <div id="sections"></div>
+
     <section>
-      <h2>Behaviour</h2>
-      <div class="check">
-        <input id="enabled" type="checkbox" checked />
-        <label for="enabled">Enabled <span class="hint">— watch SoundCloud tabs and write files.</span></label>
-      </div>
-      <div class="check">
-        <input id="clearOnStop" type="checkbox" />
-        <label for="clearOnStop">Clear files when playback stops <span class="hint">— empties the two text files when no SoundCloud tab is playing.</span></label>
-      </div>
-      <div class="row">
-        <button id="test" class="ghost">Write a test file now</button>
-        <button id="selftest" class="ghost">Run self-test</button>
+      <div class="toolbar spread">
+        <div class="row">
+          <button id="test" class="ghost">Write a test file now</button>
+          <button id="selftest" class="ghost">Run self-test</button>
+        </div>
         <button id="save" class="primary">Save</button>
       </div>
       <div id="saveLog"></div>
     </section>
   </div>
 
+  <script src="lib/components.js"></script>
   <script src="lib/idb.js"></script>
   <script src="options.js"></script>
 </body>
