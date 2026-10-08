@@ -4,7 +4,8 @@ A Chrome (Manifest V3) extension that watches your SoundCloud tab(s), finds the 
 that is actually playing, and mirrors it to a folder you choose — as a single
 `nowplaying.json`, one file per field, or both (you pick in Settings).
 
-Defaults on: the original three outputs plus non-dynamic metadata —
+Defaults on: the original three outputs plus the extra fields available with no extra
+request —
 
 | File | Contents |
 |------|----------|
@@ -13,8 +14,9 @@ Defaults on: the original three outputs plus non-dynamic metadata —
 | `cover.*`    | the cover art (extension set from the real image type: `.jpg` / `.png` / `.webp` …) |
 | `nowplaying.json` | every enabled field, structured |
 
-…plus `genre.txt`, `label.txt`, `isrc.txt`, play/like/repost counts and more,
-each individually toggleable.
+…plus `album.txt` and `track-url.txt`. Everything else — the live playback fields and
+the whole **SoundCloud metadata** set (`genre.txt`, `label.txt`, `isrc.txt`, counts, …) —
+is off by default and enabled per field in Settings.
 
 This matches the requested flow exactly:
 
@@ -86,18 +88,20 @@ SoundCloud tab                          extension
 
 Every field is a checkbox in Settings, grouped into sections:
 
-* **Core** — `title`, `artist`, `cover`.
-* **Track details** (no extra request) — `album` / playlist, track URL.
+* **Core & track details** (no extra request; on by default) — title, artist, cover,
+  album / playlist, track URL.
 * **Live playback** (changes continuously; off by default, written to `nowplaying.json` every
   ~5 s) — playing, ad-break, elapsed, remaining, duration, progress %, volume %, muted.
-* **SoundCloud metadata** (Tier 1, fetched per track) — genre, tags, label, release date,
-  uploaded, license, ISRC, publisher, writer, description, plays, likes, reposts, comments,
-  downloads, uploader (+ URL, followers), waveform URL, hi-res cover URL, BPM, key,
-  monetization.
+* **SoundCloud metadata** (Tier 1, fetched per track; **off by default**) — genre, tags,
+  label, release date, uploaded, license, ISRC, publisher, writer, description, plays, likes,
+  reposts, comments, downloads, uploader (+ URL, followers), waveform URL, hi-res cover URL,
+  BPM, key, monetization.
 
-Tier 1 uses SoundCloud's own `/resolve` endpoint. There is no public API key, so the
-`client_id` is scraped from SoundCloud's web bundles exactly as their player does, cached for
-a few hours, and re-discovered on `401/403`. No extra host permission is needed.
+Tier 1 is only fetched when at least one SoundCloud-metadata field is enabled (otherwise no
+API request is made at all). It uses SoundCloud's own `/resolve` endpoint. There is no public
+API key, so the `client_id` is scraped from SoundCloud's web bundles exactly as their player
+does, cached for a few hours, and re-discovered on `401/403`. No extra host permission is
+needed.
 
 ### Multiple tabs
 
@@ -117,7 +121,7 @@ downloads. The file extension follows the real `Content-Type`.
 * **Output** — write `nowplaying.json` (renameable) and/or one file per field;
   toggle Tier 1 fetching; disable the whole pipeline; clear files when playback stops.
 * **Component grid** — every field in its own section with a checkbox and a renameable file
-  name. Core + non-dynamic fields are on by default; the live playback fields are off.
+  name. Core & track details are on by default; live playback and SoundCloud metadata are off.
 * **Write a test file now** — exercises the real folder path.
 * **Run self-test** — writes files + JSON into Chrome's private sandbox and reads them back.
 
@@ -129,8 +133,9 @@ downloads. The file extension follows the real `Content-Type`.
 * **Text files are overwritten in place**, so the write is not crash-atomic; for the tiny
   payloads here this is not a practical concern.
 * A cover can't be written when the track has no artwork; the text files are still updated.
-* **Tier 1 needs a track URL and a working `client_id`.** If scraping fails the text files
-  still update; the popup shows the API error.
+* **Tier 1 needs a track URL and a working `client_id`.** It only runs when a SoundCloud-
+  metadata field is enabled; if scraping fails, the other files still update and the popup
+  shows the API error.
 * Fields SoundCloud doesn't have for a track (e.g. BPM, key) are written empty, not as
   `"null"`.
 * SoundCloud ad breaks are detected and skipped, so ads don't overwrite your track.

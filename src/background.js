@@ -264,7 +264,7 @@ async function reconcile() {
     if (key !== lastWritten) {
       // New track: fetch Tier 1 metadata first, then write everything.
       let apiFields = null;
-      if (settings.fetchApi && active.trackUrl) {
+      if (globalThis.DNPcomponents.needsApi(settings) && active.trackUrl) {
         const r = await withTimeout(globalThis.DNPapi.fetchTrack(active.trackUrl), API_TIMEOUT_MS, { ok: false, error: 'timeout' });
         if (r && r.ok) { apiFields = r.fields; }
         else { await setStatus({ apiError: (r && r.error) || 'api failed' }); }
@@ -358,7 +358,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       const settings = await getSettings();
       const { active } = globalThis.DNP.chooseActive([...tabStates.values()]);
       let apiFields = null;
-      if (settings.fetchApi && active && active.trackUrl) {
+      if (globalThis.DNPcomponents.needsApi(settings) && active && active.trackUrl) {
         const r = await withTimeout(globalThis.DNPapi.fetchTrack(active.trackUrl), API_TIMEOUT_MS, { ok: false, error: 'timeout' });
         if (r && r.ok) apiFields = r.fields;
       }

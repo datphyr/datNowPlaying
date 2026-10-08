@@ -283,20 +283,39 @@ function makeEnv() {
   const A = require(path.join(__dirname, '..', 'src', 'lib', 'api.js'));
 
   /* ------------------------ component registry ------------------------ */
-  test('registry: core three default on', () => {
+  test('registry: core + track details default on', () => {
     const d = C.defaults();
     eq(d.components.title.enabled, true);
     eq(d.components.artist.enabled, true);
     eq(d.components.cover.enabled, true);
     eq(d.components.cover.file, 'cover');
+    eq(d.components.album.enabled, true);      // track details
+    eq(d.components.trackUrl.enabled, true);   // track details
   });
-  test('registry: non-dynamic tier 0 + tier 1 default on, dynamic default off', () => {
+  test('registry: Tier 1 (SoundCloud metadata) defaults OFF', () => {
     const d = C.defaults();
-    eq(d.components.genre.enabled, true);      // tier 1
-    eq(d.components.label.enabled, true);      // tier 1
-    eq(d.components.album.enabled, true);      // tier 0 static
-    eq(d.components.elapsed.enabled, false);   // dynamic
-    eq(d.components.volume.enabled, false);    // dynamic
+    eq(d.components.genre.enabled, false);
+    eq(d.components.label.enabled, false);
+    eq(d.components.isrc.enabled, false);
+  });
+  test('registry: live dynamic fields default off', () => {
+    const d = C.defaults();
+    eq(d.components.elapsed.enabled, false);
+    eq(d.components.volume.enabled, false);
+    eq(d.components.playing.enabled, false);
+  });
+  test('registry: core and track details share one section', () => {
+    const sec = C.SECTIONS.find((s) => s.id === 'core');
+    ok(sec, 'no core section');
+    const ids = sec.components.map((c) => c.id);
+    eq(ids, ['title', 'artist', 'cover', 'album', 'trackUrl']);
+  });
+  test('registry: needsApi is false when no Tier 1 field is enabled', () => {
+    eq(C.needsApi(C.defaults()), false);                     // all tier 1 off by default
+    const on = C.defaults(); on.components.genre.enabled = true;
+    eq(C.needsApi(on), true);
+    const off = C.defaults(); off.fetchApi = false; off.components.genre.enabled = true;
+    eq(C.needsApi(off), false);
   });
   test('registry: merge fills missing components from defaults', () => {
     const m = C.merge({ components: { genre: { enabled: false, file: 'g.txt' } } });
