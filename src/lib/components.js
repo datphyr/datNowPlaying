@@ -8,17 +8,17 @@
  * dynamic:  true = changes continuously during playback (so it only lands in
  *           nowplaying.json on a throttle, and is off by default)
  * kind:     'text' | 'image'
- * default:  enabled unless noted; Tier 0 (core + track details) on by default,
- *           Tier 1 (SoundCloud metadata) and live dynamic fields off by default
+ * default:  enabled unless noted. Every checkbox drives its own output file;
+ *           there is no separate "write files" or "fetch metadata" switch.
  */
 (function (global) {
   'use strict';
 
   var SECTIONS = [
     {
-      id: 'core',
-      title: 'Core & track details',
-      blurb: 'Available with no extra request. All on by default.',
+      id: 'details',
+      title: 'Track details',
+      blurb: 'No extra request, no cover art download. All on by default.',
       components: [
         { id: 'title', label: 'Track title', file: 'track.txt', tier: 0, default: true },
         { id: 'artist', label: 'Artist', file: 'artist.txt', tier: 0, default: true },
@@ -30,7 +30,7 @@
     {
       id: 'live',
       title: 'Live playback',
-      blurb: 'Changes continuously. Off by default; goes into nowplaying.json on a throttle.',
+      blurb: 'Changes continuously, so it only refreshes nowplaying.json on a throttle. Off by default.',
       components: [
         { id: 'playing', label: 'Playing state', file: 'playing.txt', tier: 0, dynamic: true, default: false },
         { id: 'adPlaying', label: 'Ad break active', file: 'ad-break.txt', tier: 0, dynamic: true, default: false },
@@ -45,7 +45,7 @@
     {
       id: 'api',
       title: 'SoundCloud metadata',
-      blurb: 'Fetched from the SoundCloud API on each track change. Off by default.',
+      blurb: 'Needs a SoundCloud API request per track change (enabled automatically when you tick any of these). Off by default.',
       components: [
         { id: 'genre', label: 'Genre', file: 'genre.txt', tier: 1, default: false },
         { id: 'tags', label: 'Tags', file: 'tags.txt', tier: 1, default: false },
@@ -90,9 +90,7 @@
     return {
       enabled: true,
       clearOnStop: false,
-      writeJson: true,
-      writeFiles: true,
-      fetchApi: true,
+      writeJson: false,          // nowplaying.json is opt-in
       jsonFile: 'nowplaying.json',
       components: components
     };
@@ -105,9 +103,7 @@
     var out = Object.assign({}, d, {
       enabled: s.enabled !== false,
       clearOnStop: !!s.clearOnStop,
-      writeJson: s.writeJson !== false,
-      writeFiles: s.writeFiles !== false,
-      fetchApi: s.fetchApi !== false,
+      writeJson: s.writeJson === true,
       jsonFile: s.jsonFile || d.jsonFile
     });
     var comps = {};
@@ -122,9 +118,10 @@
     return out;
   }
 
-  // True when at least one enabled component needs the API (Tier 1).
+  // True when at least one enabled component needs the API (Tier 1). This
+  // replaces any separate "fetch metadata" switch.
   function needsApi(settings) {
-    if (!settings || settings.fetchApi === false) return false;
+    if (!settings) return false;
     var comps = settings.components || {};
     return ALL.some(function (c) { return c.tier === 1 && comps[c.id] && comps[c.id].enabled; });
   }

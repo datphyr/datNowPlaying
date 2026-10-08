@@ -1,22 +1,22 @@
 # datNowPlaying
 
 A Chrome (Manifest V3) extension that watches your SoundCloud tab(s), finds the track
-that is actually playing, and mirrors it to a folder you choose — as a single
-`nowplaying.json`, one file per field, or both (you pick in Settings).
+that is actually playing, and mirrors it to a folder you choose — one file per ticked
+field, and optionally all of them combined into a single `nowplaying.json`.
 
-Defaults on: the original three outputs plus the extra fields available with no extra
-request —
+Defaults on: the fields available with no extra request —
 
 | File | Contents |
 |------|----------|
 | `track.txt`  | the track title |
 | `artist.txt` | the artist name |
 | `cover.*`    | the cover art (extension set from the real image type: `.jpg` / `.png` / `.webp` …) |
-| `nowplaying.json` | every enabled field, structured |
+| `album.txt`  | album / playlist name |
+| `track-url.txt` | the track URL |
 
-…plus `album.txt` and `track-url.txt`. Everything else — the live playback fields and
-the whole **SoundCloud metadata** set (`genre.txt`, `label.txt`, `isrc.txt`, counts, …) —
-is off by default and enabled per field in Settings.
+Everything else is off by default and enabled per field in Settings: the live playback
+fields, the whole **SoundCloud metadata** set (`genre.txt`, `label.txt`, `isrc.txt`, counts, …),
+and `nowplaying.json` itself.
 
 This matches the requested flow exactly:
 
@@ -86,16 +86,22 @@ SoundCloud tab                          extension
 
 ## Data you can export
 
-Every field is a checkbox in Settings, grouped into sections:
+Every field is a checkbox in Settings, grouped into sections. There is no separate
+"write files" or "fetch metadata" switch — **the checkmarks are the switches**: each ticked
+field gets its own file, and ticking any SoundCloud-metadata field is what enables the API
+request.
 
-* **Core & track details** (no extra request; on by default) — title, artist, cover,
+* **Track details** (no extra request; on by default) — title, artist, cover art,
   album / playlist, track URL.
-* **Live playback** (changes continuously; off by default, written to `nowplaying.json` every
-  ~5 s) — playing, ad-break, elapsed, remaining, duration, progress %, volume %, muted.
-* **SoundCloud metadata** (Tier 1, fetched per track; **off by default**) — genre, tags,
-  label, release date, uploaded, license, ISRC, publisher, writer, description, plays, likes,
-  reposts, comments, downloads, uploader (+ URL, followers), waveform URL, hi-res cover URL,
-  BPM, key, monetization.
+* **Live playback** (changes continuously; off by default, written only into
+  `nowplaying.json` on a ~5 s throttle) — playing, ad-break, elapsed, remaining, duration,
+  progress %, volume %, muted.
+* **SoundCloud metadata** (Tier 1, one API request per track; **off by default**) — genre,
+  tags, label, release date, uploaded, license, ISRC, publisher, writer, description, plays,
+  likes, reposts, comments, downloads, uploader (+ URL, followers), waveform URL, hi-res
+  cover URL, BPM, key, monetization.
+
+`nowplaying.json` is itself off by default; turn it on under **Output**.
 
 Tier 1 is only fetched when at least one SoundCloud-metadata field is enabled (otherwise no
 API request is made at all). It uses SoundCloud's own `/resolve` endpoint. There is no public
@@ -117,11 +123,12 @@ downloads. The file extension follows the real `Content-Type`.
 
 ## Settings
 
+* **Enabled** — the master switch, at the top: pause the whole pipeline.
 * **Save location** — the folder (required).
-* **Output** — write `nowplaying.json` (renameable) and/or one file per field;
-  toggle Tier 1 fetching; disable the whole pipeline; clear files when playback stops.
+* **Output** — write `nowplaying.json` (renameable). Off by default.
 * **Component grid** — every field in its own section with a checkbox and a renameable file
-  name. Core & track details are on by default; live playback and SoundCloud metadata are off.
+  name. Track details are on by default; live playback and SoundCloud metadata are off.
+* **Clear files when playback stops** — at the bottom.
 * **Write a test file now** — exercises the real folder path.
 * **Run self-test** — writes files + JSON into Chrome's private sandbox and reads them back.
 

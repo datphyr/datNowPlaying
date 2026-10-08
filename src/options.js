@@ -61,8 +61,6 @@
       enabled: $('enabled').checked,
       clearOnStop: $('clearOnStop').checked,
       writeJson: $('writeJson').checked,
-      writeFiles: $('writeFiles').checked,
-      fetchApi: $('fetchApi').checked,
       jsonFile: $('jsonFile').value.trim() || 'nowplaying.json',
       components: {}
     };
@@ -80,9 +78,7 @@
     settings = s;
     $('enabled').checked = s.enabled !== false;
     $('clearOnStop').checked = !!s.clearOnStop;
-    $('writeJson').checked = s.writeJson !== false;
-    $('writeFiles').checked = s.writeFiles !== false;
-    $('fetchApi').checked = s.fetchApi !== false;
+    $('writeJson').checked = s.writeJson === true;
     $('jsonFile').value = s.jsonFile || 'nowplaying.json';
     renderSections();
   }

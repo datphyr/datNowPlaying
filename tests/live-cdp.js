@@ -147,9 +147,18 @@ async function evalInContext(cdp, contextId, expression) {
       if (apiRes && apiRes.genre) log('  api: genre=' + apiRes.genre + ' label=' + apiRes.label + ' isrc=' + apiRes.isrc + ' plays=' + apiRes.playbackCount + ' writer=' + apiRes.writer);
 
       // Value assembly for the enabled components
-      const asm = await swEval(`(()=>{ const v = buildValues({ title:'T', artist:'A', playing:true, position:30, duration:120, volume:80, muted:false }, null); return JSON.stringify({ elapsed:v.elapsed, remaining:v.remaining, progress:v.progress, volume:v.volume, playing:v.playing, title:v.title }); })()`);
+      const asm = await swEval(`(()=>{ const v = DNPvalues.buildValues({ title:'T', artist:'A', playing:true, position:30, duration:120, volume:80, muted:false }, null); return JSON.stringify({ elapsed:v.elapsed, remaining:v.remaining, progress:v.progress, volume:v.volume, playing:v.playing, title:v.title }); })()`);
       let av = {}; try { av = JSON.parse(asm); } catch (e) {}
       check('assembles live values correctly', av.elapsed && av.elapsed.json === 30 && av.progress && av.progress.json === 25 && av.remaining && av.remaining.json === 90 && av.volume && av.volume.json === 80, asm);
+
+      // nowplaying.json is opt-in; the payload must appear only when settings.writeJson is on.
+      const jsonOff = await swEval(`(()=>{ const s = DNPcomponents.defaults(); const v = DNPvalues.buildValues({ title:'T' }, null); const p = DNPvalues.buildTrackPayload(s, {}, v, null); return JSON.stringify({ writeJson: s.writeJson, json: p.json, files: p.files.map(f=>f.name) }); })()`);
+      const jOff = JSON.parse(jsonOff);
+      check('nowplaying.json is NOT written by default', jOff.writeJson === false && jOff.json === null && jOff.files.indexOf('track.txt') !== -1, jsonOff);
+
+      const jsonOn = await swEval(`(()=>{ const s = DNPcomponents.defaults(); s.writeJson = true; const v = DNPvalues.buildValues({ title:'T', artist:'A' }, null); const p = DNPvalues.buildTrackPayload(s, {}, v, null); return p.json ? p.json.text : 'MISSING'; })()`);
+      let jOn = null; try { jOn = JSON.parse(jsonOn); } catch (e) {}
+      check('nowplaying.json IS written when enabled', !!(jOn && jOn.title === 'T' && jOn.artist === 'A'), jsonOn);
 
       // Poll for the content script's first message reaching the background.
       let tabsArr = [];

@@ -281,16 +281,17 @@ function makeEnv() {
 (async () => {
   const C = require(path.join(__dirname, '..', 'src', 'lib', 'components.js'));
   const A = require(path.join(__dirname, '..', 'src', 'lib', 'api.js'));
+  const V = require(path.join(__dirname, '..', 'src', 'lib', 'values.js'));
 
   /* ------------------------ component registry ------------------------ */
-  test('registry: core + track details default on', () => {
+  test('registry: track details default on', () => {
     const d = C.defaults();
     eq(d.components.title.enabled, true);
     eq(d.components.artist.enabled, true);
     eq(d.components.cover.enabled, true);
     eq(d.components.cover.file, 'cover');
-    eq(d.components.album.enabled, true);      // track details
-    eq(d.components.trackUrl.enabled, true);   // track details
+    eq(d.components.album.enabled, true);
+    eq(d.components.trackUrl.enabled, true);
   });
   test('registry: Tier 1 (SoundCloud metadata) defaults OFF', () => {
     const d = C.defaults();
@@ -304,22 +305,33 @@ function makeEnv() {
     eq(d.components.volume.enabled, false);
     eq(d.components.playing.enabled, false);
   });
-  test('registry: core and track details share one section', () => {
-    const sec = C.SECTIONS.find((s) => s.id === 'core');
-    ok(sec, 'no core section');
-    const ids = sec.components.map((c) => c.id);
-    eq(ids, ['title', 'artist', 'cover', 'album', 'trackUrl']);
+  test('registry: nowplaying.json is opt-in (default off)', () => {
+    eq(C.defaults().writeJson, false);
+    eq(C.merge({}).writeJson, false);
+    eq(C.merge({ writeJson: true }).writeJson, true);
+    eq(C.merge({ writeJson: false }).writeJson, false);
   });
-  test('registry: needsApi is false when no Tier 1 field is enabled', () => {
+  test('registry: no separate writeFiles / fetchApi switches remain', () => {
+    const d = C.defaults();
+    eq('writeFiles' in d, false);
+    eq('fetchApi' in d, false);
+  });
+  test('registry: track details section holds the five on-by-default fields', () => {
+    const sec = C.SECTIONS.find((s) => s.id === 'details');
+    ok(sec, 'no details section');
+    eq(sec.title, 'Track details');
+    eq(sec.components.map((c) => c.id), ['title', 'artist', 'cover', 'album', 'trackUrl']);
+  });
+  test('registry: needsApi follows the Tier 1 checkmarks', () => {
     eq(C.needsApi(C.defaults()), false);                     // all tier 1 off by default
     const on = C.defaults(); on.components.genre.enabled = true;
     eq(C.needsApi(on), true);
-    const off = C.defaults(); off.fetchApi = false; off.components.genre.enabled = true;
+    const off = C.defaults(); off.components.genre.enabled = false;
     eq(C.needsApi(off), false);
   });
   test('registry: merge fills missing components from defaults', () => {
-    const m = C.merge({ components: { genre: { enabled: false, file: 'g.txt' } } });
-    eq(m.components.genre.enabled, false);
+    const m = C.merge({ components: { genre: { enabled: true, file: 'g.txt' } } });
+    eq(m.components.genre.enabled, true);
     eq(m.components.genre.file, 'g.txt');
     eq(m.components.title.enabled, true);      // untouched -> default
   });
@@ -350,6 +362,57 @@ function makeEnv() {
     eq(f.playbackCount, '969998');
     eq(f.coverUrl, 'https://i1.sndcdn.com/a-large.jpg');
     eq(f.bpm, '');   // null -> empty string, not 'null'
+  });
+
+  /* ------------------------ value assembly (values.js) ---------------- */
+  test('values: builds a payload with a file per enabled field', () => {
+    const s = C.defaults();
+    const values = V.buildValues({ title: 'T', artist: 'A', trackUrl: 'https://soundcloud.com/x/y', playing: true }, null);
+    const p = V.buildTrackPayload(s, { artworkUrl: 'https://i1.sndcdn.com/c-large.jpg' }, values, null);
+    const names = p.files.map((f) => f.name);
+    ok(names.includes('track.txt'), 'track.txt missing');
+    ok(names.includes('artist.txt'), 'artist.txt missing');
+    ok(names.includes('album.txt'), 'album.txt missing');
+    ok(names.includes('track-url.txt'), 'track-url.txt missing');
+    ok(p.image && p.image.name === 'cover', 'cover image missing');
+    eq(p.json, null);                                   // writeJson off by default
+  });
+  test('values: nowplaying.json is produced when enabled (the reported bug)', () => {
+    const s = C.defaults(); s.writeJson = true;
+    const values = V.buildValues({ title: 'T', artist: 'A', playing: true }, null);
+    const p = V.buildTrackPayload(s, {}, values, null);
+    ok(p.json && p.json.name === 'nowplaying.json', 'no json payload');
+    const obj = JSON.parse(p.json.text);
+    eq(obj.title, 'T');
+    eq(obj.artist, 'A');
+    ok(typeof obj.updatedAt === 'string', 'no updatedAt');
+    eq('genre' in obj, false);                          // tier 1 off by default
+  });
+  test('values: enabling a tier 1 field adds it to files and json', () => {
+    const s = C.defaults(); s.writeJson = true; s.components.genre.enabled = true;
+    const values = V.buildValues({ title: 'T' }, { genre: 'Electronic' });
+    const p = V.buildTrackPayload(s, {}, values, { genre: 'Electronic' });
+    ok(p.files.some((f) => f.name === 'genre.txt'), 'genre.txt missing');
+    eq(JSON.parse(p.json.text).genre, 'Electronic');
+  });
+  test('values: counts are numbers in json, strings in the file', () => {
+    const v = V.buildValues({ title: 'T' }, { playbackCount: '969998' });
+    eq(v.playbackCount.text, '969998');
+    eq(v.playbackCount.json, 969998);
+  });
+  test('values: dynamic payload touches only live fields, never the cover', () => {
+    const s = C.defaults(); s.writeJson = true;
+    s.components.elapsed.enabled = true; s.components.title.enabled = true;
+    const values = V.buildValues({ title: 'T', position: 30, duration: 120 }, null);
+    const p = V.buildDynamicPayload(s, values);
+    eq(p.files.map((f) => f.name), ['elapsed.txt']);     // title is not dynamic
+    eq(p.image, null);
+    eq(JSON.parse(p.json.text).elapsed, 30);
+  });
+  test('values: fmtClock pads seconds', () => {
+    eq(V.fmtClock(0), '0:00');
+    eq(V.fmtClock(65), '1:05');
+    eq(V.fmtClock(-5), '0:00');
   });
 
   /* ----------------------- offscreen writer --------------------------- */
