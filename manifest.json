@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "SoundCloud Now Playing → Disk",
+  "version": "1.0.0",
+  "description": "Watches your SoundCloud tab(s), finds the playing track, and mirrors title / artist / cover to three files in a folder you choose.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "tabs",
+    "storage",
+    "offscreen",
+    "downloads",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://soundcloud.com/*",
+    "https://*.soundcloud.com/*",
+    "https://*.sndcdn.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "SoundCloud Now Playing",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_page": "src/options.html",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://soundcloud.com/*",
+        "https://*.soundcloud.com/*"
+      ],
+      "js": [
+        "src/lib/metadata.js",
+        "src/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

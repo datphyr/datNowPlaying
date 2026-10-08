@@ -1,0 +1,13 @@
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Packaged extension output (scripts/package.sh) -- rebuilt, never committed
+dist/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
