@@ -53,7 +53,8 @@ tests/                 unit tests + the CDP live test
 5. Under **Save location** click **Choose folder…** and pick where the files should land
 6. Play something on <https://soundcloud.com>
 
-Use **Write a test file now** to confirm the folder works before you rely on it.
+Play a track on <https://soundcloud.com> — the files appear in the chosen folder on the first
+change of track.
 
 > No build step and no dependencies — the folder *is* the extension.
 
@@ -143,8 +144,6 @@ as part of the base name, so nothing is renamed silently.
 * **Component grid** — every field in its own section with a checkbox and a renameable file
   name. Track details are on by default; live playback and SoundCloud metadata are off.
 * **Clear files when playback stops** — at the bottom.
-* **Write a test file now** — exercises the real folder path.
-* **Run self-test** — writes files + JSON into Chrome's private sandbox and reads them back.
 
 ## Notes & limitations
 

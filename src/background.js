@@ -242,27 +242,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true;
   }
 
+  // Test hook only (no UI): lets the CDP live test exercise the writer, which
+  // cannot pick a real folder in headless Chrome. See tests/live-cdp.js.
   if (msg.type === 'dnp:selftest') {
     (async () => {
       try { reply(await askSelfTest()); } catch (e) { reply({ ok: false, error: String((e && e.message) || e) }); }
-    })();
-    return true;
-  }
-
-  if (msg.type === 'dnp:test-write') {
-    (async () => {
-      const settings = await getSettings();
-      const { active } = globalThis.DNP.chooseActive([...tabStates.values()]);
-      const apiFields = await fetchApiFields(settings, active && active.trackUrl);
-      lastApiFields = apiFields;
-      const state = active
-        ? Object.assign({}, active, { playing: true })
-        : { title: 'Test Track', artist: 'Test Artist', artworkUrl: null, playing: true };
-      const values = globalThis.DNPvalues.buildValues(state, apiFields);
-      const res = await performWrite(globalThis.DNPvalues.buildTrackPayload(settings, state, values, apiFields));
-      if (res && res.ok) lastWritten = dedupeKey(active);
-      await setStatus({ lastTest: res, wroteAt: Date.now(), error: res && res.ok ? null : (res && res.error) });
-      reply({ ok: !!(res && res.ok), result: res });
     })();
     return true;
   }

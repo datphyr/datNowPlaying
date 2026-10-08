@@ -128,33 +128,11 @@
     setTimeout(() => log($('saveLog'), ''), 1500);
   }
 
-  async function testWrite() {
-    log($('saveLog'), 'Writing…');
-    const res = await chrome.runtime.sendMessage({ type: 'dnp:test-write' });
-    const r = res && res.result;
-    if (res && res.ok) {
-      const names = (r.written || []).map((w) => w.name + (w.changed ? '' : ' (unchanged)')).join(', ');
-      log($('saveLog'), 'Wrote: ' + names + (r.warning ? '\nWarning: ' + r.warning : ''), 'ok');
-    } else {
-      const err = (r && r.error) || 'unknown error';
-      log($('saveLog'), 'Write failed: ' + err + (err === 'no-folder' ? ' — choose a folder first.' : ''), 'err');
-    }
-  }
-
-  async function selfTest() {
-    log($('saveLog'), 'Running writer self-test (browser sandbox)…');
-    const r = await chrome.runtime.sendMessage({ type: 'dnp:selftest' });
-    if (r && r.ok) log($('saveLog'), 'Self-test OK — wrote files + JSON and read them back (image ' + r.imageBytes + ' bytes).', 'ok');
-    else log($('saveLog'), 'Self-test failed: ' + ((r && r.error) || JSON.stringify(r)), 'err');
-  }
-
   /* ------------------------------- init ----------------------------------- */
 
   $('pick').addEventListener('click', pickFolder);
   $('clear').addEventListener('click', clearFolder);
   $('save').addEventListener('click', save);
-  $('test').addEventListener('click', testWrite);
-  $('selftest').addEventListener('click', selfTest);
 
   (async () => {
     const { settings: stored } = await chrome.storage.local.get('settings');

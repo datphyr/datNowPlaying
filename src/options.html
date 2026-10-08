@@ -42,6 +42,7 @@
     .comp.off .name, .comp.off input[type=text] { opacity: .45; }
     .toolbar { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
     .toolbar.spread { justify-content: space-between; }
+    .toolbar.end { justify-content: flex-end; }
     #log, #saveLog { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; color: #444; margin-top: 10px; min-height: 16px; }
     .ok { color: #157f3b; } .err { color: #c02; }
     .hint { color: #777; font-size: 12px; }
@@ -75,11 +76,7 @@
 
     <section>
       <label class="comp"><input id="clearOnStop" type="checkbox" /><span class="name">Clear files when playback stops<span class="tier">empties the text files when nothing is playing</span></span><span></span></label>
-      <div class="toolbar spread">
-        <div class="row">
-          <button id="test" class="ghost">Write a test file now</button>
-          <button id="selftest" class="ghost">Run self-test</button>
-        </div>
+      <div class="toolbar end">
         <button id="save" class="primary">Save</button>
       </div>
       <div id="saveLog"></div>

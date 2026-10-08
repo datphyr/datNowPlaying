@@ -49,12 +49,6 @@
   }
 
   $('open').addEventListener('click', () => chrome.runtime.openOptionsPage());
-  $('test').addEventListener('click', async () => {
-    setState('writing test…');
-    const r = await chrome.runtime.sendMessage({ type: 'dnp:test-write' });
-    setState(r && r.ok ? 'test write ok' : 'test write failed');
-    refresh();
-  });
 
   refresh();
   setInterval(refresh, 1000);
